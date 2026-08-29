@@ -121,3 +121,41 @@ def get_git_metrics(interval="weekly"):
                 students[current_author]["deleted"] += int(parts[1])
 
     return students, timeline_activity, student_logs, scope_title
+
+
+def create_charts(students, timeline_activity, interval):
+    """Generates workload distribution and timeline comparison charts."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 3.8))
+    authors = list(students.keys())
+    periods = sorted(timeline_activity.keys())
+
+    # 1. Timeline Chart
+    if periods and authors:
+        for author in authors:
+            counts = [timeline_activity[p].get(author, 0) for p in periods]
+            ax1.plot(periods, counts, marker='o', linewidth=2, label=author)
+        ax1.set_title(f"Commit Timeline ({interval.capitalize()})", fontsize=10, fontweight='bold')
+        ax1.set_ylabel("Commits")
+        ax1.tick_params(axis='x', rotation=30)
+        ax1.grid(True, linestyle='--', alpha=0.5)
+        ax1.legend(fontsize=8)
+    else:
+        ax1.text(0.5, 0.5, "No commits found in this interval", ha='center', va='center')
+
+    # 2. Net LOC Chart
+    if authors:
+        net_loc = [students[a]["added"] - students[a]["deleted"] for a in authors]
+        colors_list = ['#4E79A7', '#F28E2B', '#E15759', '#76B7B2', '#59A14F']
+        ax2.bar(authors, net_loc, color=colors_list[:len(authors)], width=0.45)
+        ax2.set_title("Net Lines of Code Written", fontsize=10, fontweight='bold')
+        ax2.set_ylabel("LOC (Added - Deleted)")
+        ax2.grid(axis='y', linestyle='--', alpha=0.5)
+    else:
+        ax2.text(0.5, 0.5, "No LOC changes recorded", ha='center', va='center')
+
+    plt.tight_layout()
+    img_buffer = io.BytesIO()
+    plt.savefig(img_buffer, format='png', dpi=200)
+    plt.close()
+    img_buffer.seek(0)
+    return Image(img_buffer, width=500, height=170)
