@@ -159,3 +159,165 @@ def create_charts(students, timeline_activity, interval):
     plt.close()
     img_buffer.seek(0)
     return Image(img_buffer, width=500, height=170)
+
+
+def generate_pdf(interval="weekly"):
+    repo_name, branch_name = get_repo_info()
+    students, timeline_activity, student_logs, scope_title = get_git_metrics(interval)
+
+    if students is None:
+        return
+
+    date_stamp = datetime.date.today().strftime("%Y-%m-%d")
+    
+    if interval == "weekly":
+        report_title = "Weekly Progress Report"
+        doc_name = f"{repo_name}_Weekly_Progress_Report_Form-3_{date_stamp}.pdf"
+    elif interval == "monthly":
+        report_title = "Monthly Progress Report (Form-3)"
+        doc_name = f"{repo_name}_Monthly_Progress_Report_Form-3_{date_stamp}.pdf"
+    else:
+        report_title = "Final Project Evaluation Report"
+        doc_name = f"{repo_name}_Final_Report_{date_stamp}.pdf"
+
+    doc = SimpleDocTemplate(
+        doc_name,
+        pagesize=letter,
+        rightMargin=36,
+        leftMargin=36,
+        topMargin=30,
+        bottomMargin=30
+    )
+
+    styles = getSampleStyleSheet()
+    
+    college_style = ParagraphStyle(
+        'CollegeStyle', parent=styles['Heading1'],
+        fontSize=13.5, leading=17, textColor=colors.HexColor("#0F172A"), alignment=1, spaceAfter=2
+    )
+    dept_style = ParagraphStyle(
+        'DeptStyle', parent=styles['Normal'],
+        fontSize=9.5, leading=13, textColor=colors.HexColor("#475569"), alignment=1, spaceAfter=6
+    )
+    title_style = ParagraphStyle(
+        'TitleStyle', parent=styles['Heading2'],
+        fontSize=13, leading=17, textColor=colors.HexColor("#1A365D"), alignment=1, spaceAfter=5
+    )
+    repo_style = ParagraphStyle(
+        'RepoStyle', parent=styles['Normal'],
+        fontSize=9.5, leading=14, textColor=colors.HexColor("#0F172A"), spaceAfter=3
+    )
+    meta_style = ParagraphStyle(
+        'MetaStyle', parent=styles['Normal'],
+        fontSize=8.5, textColor=colors.HexColor("#64748B"), spaceAfter=8
+    )
+    section_style = ParagraphStyle(
+        'SectionStyle', parent=styles['Heading2'],
+        fontSize=10.5, leading=14, textColor=colors.HexColor("#0F172A"), spaceBefore=7, spaceAfter=4
+    )
+    sub_section_style = ParagraphStyle(
+        'SubSectionStyle', parent=styles['Heading3'],
+        fontSize=9, leading=12, textColor=colors.HexColor("#2563EB"), spaceBefore=5, spaceAfter=2
+    )
+    msg_style = ParagraphStyle(
+        'MsgStyle', parent=styles['Normal'],
+        fontSize=8, leading=10, textColor=colors.HexColor("#1E293B")
+    )
+    meta_cell_style = ParagraphStyle(
+        'MetaCellStyle', parent=styles['Normal'],
+        fontSize=8, leading=10, textColor=colors.HexColor("#475569"), alignment=1
+    )
+
+    story = []
+
+    # 1. Header
+    story.append(Paragraph(f"<b>{html.escape(COLLEGE_NAME)}</b>", college_style))
+    story.append(Paragraph(f"<b>{html.escape(DEPARTMENT_NAME)}</b>", dept_style))
+    story.append(Paragraph(f"<u><b>{report_title}</b></u>", title_style))
+    story.append(Spacer(1, 3))
+
+    # 2. Metadata
+    story.append(Paragraph(f"<b>Project Repository:</b> <font color='#2563EB'><b>{html.escape(repo_name)}</b></font> &nbsp;|&nbsp; <b>Branch:</b> <code>{html.escape(branch_name)}</code>", repo_style))
+    story.append(Paragraph(f"<b>Evaluation Window:</b> {scope_title} &nbsp;|&nbsp; <b>Generated On:</b> {datetime.date.today().strftime('%B %d, %Y')}", meta_style))
+
+    # 3. Individual Summary Table
+    story.append(Paragraph("1. Individual Contribution Breakdown", section_style))
+    total_commits = sum(data["commits"] for data in students.values())
+    table_data = [["Student Name", "Commits (%)", "Lines Added", "Lines Deleted", "Net LOC", "Active Days"]]
+    
+    if students:
+        for name, data in students.items():
+            pct = (data["commits"] / total_commits * 100) if total_commits > 0 else 0
+            net = data["added"] - data["deleted"]
+            table_data.append([
+                html.escape(name),
+                f"{data['commits']} ({pct:.1f}%)",
+                f"+{data['added']:,}",
+                f"-{data['deleted']:,}",
+                f"{net:,}",
+                f"{len(data['active_days'])} days"
+            ])
+    else:
+        table_data.append(["No commits found in this period. Run with 'final' to see all commits.", "-", "-", "-", "-", "-"])
+
+    table = Table(table_data, colWidths=[120, 80, 80, 80, 80, 100])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1E293B")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3.5),
+        ('TOPPADDING', (0, 0), (-1, -1), 3.5),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+    ]))
+    story.append(table)
+    story.append(Spacer(1, 6))
+
+    # 4. Visual Charts
+    story.append(Paragraph("2. Visual Trends & Volume", section_style))
+    chart_image = create_charts(students, timeline_activity, interval)
+    story.append(chart_image)
+    story.append(Spacer(1, 6))
+
+    # 5. Detailed Commit Logs per Student
+    story.append(Paragraph(f"3. Detailed Commit Logs ({interval.capitalize()})", section_style))
+    if not student_logs:
+        story.append(Paragraph("<i>No commit logs found for this timeframe.</i>", styles['Normal']))
+    else:
+        for student_name, logs in student_logs.items():
+            student_section = []
+            student_section.append(Paragraph(f"<b>Student:</b> {html.escape(student_name)} — <i>{len(logs)} commit(s)</i>", sub_section_style))
+            
+            log_table_data = [["Date", "Hash", "Commit Message"]]
+            for date_val, sha_val, msg_val in logs:
+                safe_msg = html.escape(msg_val) if msg_val else "(No commit message)"
+                log_table_data.append([
+                    Paragraph(date_val, meta_cell_style),
+                    Paragraph(f"<code>{sha_val}</code>", meta_cell_style),
+                    Paragraph(safe_msg, msg_style)
+                ])
+            
+            log_table = Table(log_table_data, colWidths=[70, 60, 410])
+            t_style = [
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#475569")),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 7.5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5),
+                ('TOPPADDING', (0, 0), (-1, -1), 2.5),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+            ]
+            
+            log_table.setStyle(TableStyle(t_style))
+            student_section.append(log_table)
+            student_section.append(Spacer(1, 5))
+            story.append(KeepTogether(student_section))
+
+    doc.build(story)
+    print(f"\n[SUCCESS] Generated: {doc_name}")
+    print(f" -> Found {len(students)} student(s) and {total_commits} total commits.")
