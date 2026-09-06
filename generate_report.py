@@ -7,10 +7,12 @@ import sys
 import html
 import matplotlib.pyplot as plt
 
+
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, KeepTogether
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
 
 # -------------------------------------------------------------
 # CONFIGURATION: Institution & Department Details
@@ -25,6 +27,7 @@ def get_repo_info():
     repo_name = "Project-Repository"
     branch_name = "main"
 
+
     try:
         root_path = subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], encoding='utf-8').strip()
         repo_name = os.path.basename(root_path)
@@ -35,10 +38,12 @@ def get_repo_info():
         except Exception:
             repo_name = os.path.basename(os.getcwd())
 
+
     try:
         branch_name = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], encoding='utf-8').strip()
     except Exception:
         pass
+
 
     return repo_name, branch_name
 
@@ -62,18 +67,22 @@ def get_git_metrics(interval="weekly"):
     else:
         scope_title = "Complete Project Lifecycle (All Commits)"
 
+
     try:
         raw_output = subprocess.check_output(git_args, encoding='utf-8', errors='replace')
     except subprocess.CalledProcessError:
         print("[ERROR] Git command failed. Please ensure you are inside a Git repository.")
         return None, None, None, scope_title
 
+
     students = defaultdict(lambda: {"commits": 0, "added": 0, "deleted": 0, "active_days": set()})
     timeline_activity = defaultdict(lambda: defaultdict(int))
     student_logs = defaultdict(list)
 
+
     current_author = None
     current_date_str = None
+
 
     for line in raw_output.strip().split('\n'):
         line = line.strip()
@@ -114,11 +123,13 @@ def get_git_metrics(interval="weekly"):
             except Exception:
                 pass
 
+
         elif current_author and not line.startswith('COMMIT|||'):
             parts = line.split()
             if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
                 students[current_author]["added"] += int(parts[0])
                 students[current_author]["deleted"] += int(parts[1])
+
 
     return students, timeline_activity, student_logs, scope_title
 
@@ -128,6 +139,7 @@ def create_charts(students, timeline_activity, interval):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 3.8))
     authors = list(students.keys())
     periods = sorted(timeline_activity.keys())
+
 
     # 1. Timeline Chart
     if periods and authors:
@@ -142,6 +154,7 @@ def create_charts(students, timeline_activity, interval):
     else:
         ax1.text(0.5, 0.5, "No commits found in this interval", ha='center', va='center')
 
+
     # 2. Net LOC Chart
     if authors:
         net_loc = [students[a]["added"] - students[a]["deleted"] for a in authors]
@@ -152,6 +165,7 @@ def create_charts(students, timeline_activity, interval):
         ax2.grid(axis='y', linestyle='--', alpha=0.5)
     else:
         ax2.text(0.5, 0.5, "No LOC changes recorded", ha='center', va='center')
+
 
     plt.tight_layout()
     img_buffer = io.BytesIO()
@@ -165,8 +179,10 @@ def generate_pdf(interval="weekly"):
     repo_name, branch_name = get_repo_info()
     students, timeline_activity, student_logs, scope_title = get_git_metrics(interval)
 
+
     if students is None:
         return
+
 
     date_stamp = datetime.date.today().strftime("%Y-%m-%d")
     
@@ -180,6 +196,7 @@ def generate_pdf(interval="weekly"):
         report_title = "Final Project Evaluation Report"
         doc_name = f"{repo_name}_Final_Report_{date_stamp}.pdf"
 
+
     doc = SimpleDocTemplate(
         doc_name,
         pagesize=letter,
@@ -188,6 +205,7 @@ def generate_pdf(interval="weekly"):
         topMargin=30,
         bottomMargin=30
     )
+
 
     styles = getSampleStyleSheet()
     
@@ -228,7 +246,9 @@ def generate_pdf(interval="weekly"):
         fontSize=8, leading=10, textColor=colors.HexColor("#475569"), alignment=1
     )
 
+
     story = []
+
 
     # 1. Header
     story.append(Paragraph(f"<b>{html.escape(COLLEGE_NAME)}</b>", college_style))
@@ -236,9 +256,11 @@ def generate_pdf(interval="weekly"):
     story.append(Paragraph(f"<u><b>{report_title}</b></u>", title_style))
     story.append(Spacer(1, 3))
 
+
     # 2. Metadata
     story.append(Paragraph(f"<b>Project Repository:</b> <font color='#2563EB'><b>{html.escape(repo_name)}</b></font> &nbsp;|&nbsp; <b>Branch:</b> <code>{html.escape(branch_name)}</code>", repo_style))
     story.append(Paragraph(f"<b>Evaluation Window:</b> {scope_title} &nbsp;|&nbsp; <b>Generated On:</b> {datetime.date.today().strftime('%B %d, %Y')}", meta_style))
+
 
     # 3. Individual Summary Table
     story.append(Paragraph("1. Individual Contribution Breakdown", section_style))
@@ -260,6 +282,7 @@ def generate_pdf(interval="weekly"):
     else:
         table_data.append(["No commits found in this period. Run with 'final' to see all commits.", "-", "-", "-", "-", "-"])
 
+
     table = Table(table_data, colWidths=[120, 80, 80, 80, 80, 100])
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1E293B")),
@@ -276,11 +299,13 @@ def generate_pdf(interval="weekly"):
     story.append(table)
     story.append(Spacer(1, 6))
 
+
     # 4. Visual Charts
     story.append(Paragraph("2. Visual Trends & Volume", section_style))
     chart_image = create_charts(students, timeline_activity, interval)
     story.append(chart_image)
     story.append(Spacer(1, 6))
+
 
     # 5. Detailed Commit Logs per Student
     story.append(Paragraph(f"3. Detailed Commit Logs ({interval.capitalize()})", section_style))
@@ -318,6 +343,12 @@ def generate_pdf(interval="weekly"):
             student_section.append(Spacer(1, 5))
             story.append(KeepTogether(student_section))
 
+
     doc.build(story)
     print(f"\n[SUCCESS] Generated: {doc_name}")
     print(f" -> Found {len(students)} student(s) and {total_commits} total commits.")
+
+
+if __name__ == "__main__":
+    chosen_interval = sys.argv[1].lower() if len(sys.argv) > 1 else "weekly"
+    generate_pdf(chosen_interval)
