@@ -24,3 +24,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
+
+      - name: Install PDF & Graph Dependencies
+        run: |
+          pip install reportlab matplotlib
+
+      - name: Generate Weekly PDF Report
+        run: |
+          python generate_report.py weekly
